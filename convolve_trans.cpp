@@ -13,7 +13,7 @@ constexpr int around(int x)
 
 const int data_in_packet = 128;
 const int packet_size = data_in_packet + 8;
-const int max_len = 32000 * data_in_packet ;
+const int max_len = 32760 * data_in_packet ;
 
 const int number_of_channel = around(2000);
 const int packet_per_rgramm = number_of_channel / data_in_packet;
@@ -105,22 +105,24 @@ int main()
     Output phase (number_of_channel, (number_of_rgramms + 2) / 3);
     int N = 1;
 
+    Window filter = Window(window_width);
+    hemming(&filter);
+
+    double t = omp_get_wtime();
     unsigned char *raw = (unsigned char*)x[0].data;
     BufferMap y = BufferMap(raw, number_of_packets, data_in_packet);
     Refs yy = y.cast<float>();
     yy.resize(number_of_rgramms, number_of_channel);
 
+    double t11 = omp_get_wtime();
     Input data = yy.transpose();
-
-    data.resize(number_of_channel, number_of_rgramms);
-
-    Window filter = Window(window_width);
-    hemming(&filter);
-
-
-    double t = omp_get_wtime();
-    datacos = data.array().rowwise() * coss.transpose();
-    datasin = data.array().rowwise() * sins.transpose();
+    double t1 = omp_get_wtime();
+    #pragma omp parallel for
+    for (int i = 0; i < data.cols(); i++)
+    {
+        datacos.col(i) = data.col(i) * cos_val[i % 3];
+        data.col(i) *= sin_val[i % 3];
+    }
 
     double t2 = omp_get_wtime();
     #pragma omp parallel for
@@ -128,28 +130,25 @@ int main()
     {
         convcos.col(i/3) = datacos.block<number_of_channel, window_width>(0, i)
                            * filter;
-        convsin.col(i/3) = datasin.block<number_of_channel, window_width>(0, i)
+        convsin.col(i/3) = data.block<number_of_channel, window_width>(0, i)
                            * filter;
     }
 
     double t3 = omp_get_wtime();
-/*
-    for (int i = 0; i < number_of_channel; i++)
-        for (int j = 0; j < (number_of_rgramms + 2) / 3; j++)
-            phase(i, j) = atan2f(convsin(i, j), convcos(i, j));
-slower by factor of 3.3 */
-
-    double t4 = omp_get_wtime();
+    double t4 = t3;
     phase = convsin.binaryExpr(convcos, ptr_fun(atan2f));
     double t5 = omp_get_wtime();
-    double dt = (omp_get_wtime() - t) / N;
+    double dt = (t5 - t) / N;
 
-    for (int i = 0; i < phase.cols() / 2 ; i++)
+    for (int i = 0; i < phase.cols() / 2 ; i+= phase.cols() / 10)
     {
     cout << i << " " << phase.row(1)[i] << " " << test[3 * i] << endl;
     }
 
-    cout << "cos, sin: " << t2 - t << endl;
+    cout << endl;
+    cout << "cast: " << t11 - t << endl;
+    cout << "transpose: " << t1 - t11 << endl;
+    cout << "cos, sin: " << t2 - t1 << endl;
     cout << "conv: " << t3 - t2 << endl;
     cout << "atan2: " << t4 - t3 << endl;
     cout << "atan2: " << t5 - t4 << endl;
