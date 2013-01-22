@@ -21,8 +21,8 @@ const int number_of_rgramms = max_len / number_of_channel;
 const int number_of_packets = number_of_rgramms * packet_per_rgramm;
 const int window_width = 48;
 
-typedef Matrix<float, Dynamic, number_of_channel, ColMajor> Input;
-typedef Matrix<float, Dynamic, number_of_channel> Output;
+typedef Matrix<float, number_of_channel, Dynamic, ColMajor> Input;
+typedef Matrix<float, number_of_channel, Dynamic> Output;
 typedef Matrix<float, window_width, 1> Window;
 
 struct Packet
@@ -98,11 +98,11 @@ int main()
         sins[i] = sin_val[i % 3];
     }
 
-    Input datacos = Input::Zero(number_of_rgramms, number_of_channel);
-    Input datasin = Input::Zero(number_of_rgramms, number_of_channel);
-    Output convcos = Output::Zero((number_of_rgramms + 2) / 3, number_of_channel);
-    Output convsin = Output::Zero((number_of_rgramms + 2) / 3, number_of_channel);
-    Output phase =   Output::Zero((number_of_rgramms + 2) / 3, number_of_channel);
+    Input datacos(number_of_channel, number_of_rgramms);
+    Input datasin(number_of_channel, number_of_rgramms);
+    Output convcos(number_of_channel, (number_of_rgramms + 2) / 3);
+    Output convsin(number_of_channel, (number_of_rgramms + 2) / 3);
+    Output phase (number_of_channel, (number_of_rgramms + 2) / 3);
     int N = 1;
 
     unsigned char *raw = (unsigned char*)x[0].data;
@@ -110,26 +110,26 @@ int main()
     Refs yy = y.cast<float>();
     yy.resize(number_of_rgramms, number_of_channel);
 
-    Input data = yy;
+    Input data = yy.transpose();
 
-    data.resize(number_of_rgramms, number_of_channel);
+    data.resize(number_of_channel, number_of_rgramms);
 
     Window filter = Window(window_width);
     hemming(&filter);
 
 
     double t = omp_get_wtime();
-    datacos = data.array().colwise() * coss;
-    datasin = data.array().colwise() * sins;
+    datacos = data.array().rowwise() * coss.transpose();
+    datasin = data.array().rowwise() * sins.transpose();
 
     double t2 = omp_get_wtime();
     #pragma omp parallel for
     for(int i = 0; i < number_of_rgramms - window_width - 1; i += 3)
     {
-        convcos.row(i/3) = filter.transpose() *
-                           datacos.block<window_width, number_of_channel>(i, 0);
-        convsin.row(i/3) = filter.transpose() *
-                           datasin.block<window_width, number_of_channel>(i, 0);
+        convcos.col(i/3) = datacos.block<number_of_channel, window_width>(0, i)
+                           * filter;
+        convsin.col(i/3) = datasin.block<number_of_channel, window_width>(0, i)
+                           * filter;
     }
 
     double t3 = omp_get_wtime();
@@ -144,9 +144,9 @@ slower by factor of 3.3 */
     double t5 = omp_get_wtime();
     double dt = (omp_get_wtime() - t) / N;
 
-    for (int i = 0; i < phase.rows() / 2 ; i++)
+    for (int i = 0; i < phase.cols() / 2 ; i++)
     {
-    cout << i << " " << phase.col(1)[i] << " " << test[3 * i] << endl;
+    cout << i << " " << phase.row(1)[i] << " " << test[3 * i] << endl;
     }
 
     cout << "cos, sin: " << t2 - t << endl;
