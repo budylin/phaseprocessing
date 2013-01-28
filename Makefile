@@ -1,5 +1,5 @@
-INC = -I/opt/local/include/eigen3/
-CFL = -Wall -std=c++11 -g -fopenmp -O3 -funroll-loops -ffast-math -msse3 -DNDEBUG 
+INC = -I../eigen3/
+CFL = -Wall -std=c++0x -fopenmp -g -O3 -ffast-math -mavx -msse4.2 -DNDEBUG 
 
 all: convolve_trans
 
@@ -13,6 +13,7 @@ convolve: convolve.cpp
 	g++ $(CFL) $(INC) convolve.cpp -o convolve
 
 convolve_trans: convolve_trans.cpp Makefile
+	g++ $(CFL) $(INC) convolve_trans.cpp -S -o convolve_trans.S
 	g++ $(CFL) $(INC) convolve_trans.cpp -o convolve_trans
 
 
